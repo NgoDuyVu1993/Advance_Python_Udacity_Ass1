@@ -73,6 +73,14 @@ class NearEarthObject:
         return (f"NearEarthObject(designation={self.designation!r}, name={self.name!r}, "
                 f"diameter={self.diameter:.3f}, hazardous={self.hazardous!r})")
 
+    def serialize(self):
+        """Serialize the NearEarthObject data into a dictionary for CSV or JSON serialization."""
+        return {
+            'designation': self.designation,
+            'name': self.name if self.name else '',
+            'diameter_km': self.diameter if self.diameter is not float('nan') else 'nan',
+            'potentially_hazardous': self.hazardous
+        }    
 
 class CloseApproach:
     """A close approach to Earth by an NEO.
@@ -139,3 +147,12 @@ class CloseApproach:
         """Return `repr(self)`, a computer-readable string representation of this object."""
         return (f"CloseApproach(time={self.time_str!r}, distance={self.distance:.2f}, "
                 f"velocity={self.velocity:.2f}, neo={self.neo!r})")
+    
+    def serialize(self):
+        """Serialize the CloseApproach data into a dictionary for CSV or JSON serialization."""
+        return {
+            'datetime_utc': self.time_str,
+            'distance_au': self.distance,
+            'velocity_km_s': self.velocity,
+            'neo': self.neo.serialize()  # This assumes that `self.neo` is a NearEarthObject instance.
+        }
