@@ -68,3 +68,15 @@ python3 main.py query --min-diameter 0.5 --max-diameter 0.6 --not-hazardous
 # Hint: There's only one match in the whole dataset :)
 python3 main.py query --max-distance 0.1 --min-velocity 35 --min-diameter 2.5 --hazardous
 ```
+
+## Task 4:
+Run Unit Test
+```
+python3 -m unittest
+```
+
+Run Manual Test
+```
+python3 main.py query --date 2020-01-01 --limit 5 --outfile results.csv
+python3 main.py query --date 2020-01-01 --limit 5 --outfile results.json
+```
