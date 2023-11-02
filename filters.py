@@ -18,59 +18,92 @@ You'll edit this file in Tasks 3a and 3c.
 """
 import operator
 
+class FilterNotSupported(Exception):
+    """Exception raised when an attempt is made to use an unsupported filter criterion."""
+    pass
 
-class UnsupportedCriterionError(NotImplementedError):
-    """A filter criterion is unsupported."""
+class GeneralFilter:
+    """Base class for filtering attributes of CloseApproach objects.
 
-
-class AttributeFilter:
-    """A general superclass for filters on comparable attributes.
-
-    An `AttributeFilter` represents the search criteria pattern comparing some
-    attribute of a close approach (or its attached NEO) to a reference value. It
-    essentially functions as a callable predicate for whether a `CloseApproach`
-    object satisfies the encoded criterion.
-
-    It is constructed with a comparator operator and a reference value, and
-    calling the filter (with __call__) executes `get(approach) OP value` (in
-    infix notation).
-
-    Concrete subclasses can override the `get` classmethod to provide custom
-    behavior to fetch a desired attribute from the given `CloseApproach`.
+    This class is designed to be subclassed for specific attributes to filter.
     """
-    def __init__(self, op, value):
-        """Construct a new `AttributeFilter` from an binary predicate and a reference value.
 
-        The reference value will be supplied as the second (right-hand side)
-        argument to the operator function. For example, an `AttributeFilter`
-        with `op=operator.le` and `value=10` will, when called on an approach,
-        evaluate `some_attribute <= 10`.
+    def __init__(self, comparator, ref_value):
+        """Initialize the filter with a comparator function and a reference value.
 
-        :param op: A 2-argument predicate comparator (such as `operator.le`).
-        :param value: The reference value to compare against.
+        Args:
+            comparator: A function from the operator module that compares two values.
+            ref_value: The reference value to compare against.
         """
-        self.op = op
-        self.value = value
+        self.comparator = comparator
+        self.ref_value = ref_value
 
     def __call__(self, approach):
-        """Invoke `self(approach)`."""
-        return self.op(self.get(approach), self.value)
+        """Make the filter class instances callable.
+
+        Args:
+            approach: The CloseApproach object to filter.
+
+        Returns:
+            The result of applying the comparator to the attribute and the reference value.
+        """
+        attribute = self.extract_attribute(approach)
+        return self.comparator(attribute, self.ref_value)
 
     @classmethod
-    def get(cls, approach):
-        """Get an attribute of interest from a close approach.
+    def extract_attribute(cls, approach):
+        """Extract the attribute from the CloseApproach object.
 
-        Concrete subclasses must override this method to get an attribute of
-        interest from the supplied `CloseApproach`.
+        This method should be overridden by subclasses to extract the specific attribute.
 
-        :param approach: A `CloseApproach` on which to evaluate this filter.
-        :return: The value of an attribute of interest, comparable to `self.value` via `self.op`.
+        Args:
+            approach: The CloseApproach object to extract the attribute from.
+
+        Raises:
+            FilterNotSupported: If the subclass does not implement this method.
         """
-        raise UnsupportedCriterionError
+        raise FilterNotSupported(f"{cls.__name__} does not support extracting an attribute.")
 
-    def __repr__(self):
-        return f"{self.__class__.__name__}(op=operator.{self.op.__name__}, value={self.value})"
+    def __str__(self):
+        """String representation of the filter.
 
+        Returns:
+            A string that represents the filter, including its class name, comparator, and reference value.
+        """
+        return f"{self.__class__.__name__}(comparator=operator.{self.comparator.__name__}, ref_value={self.ref_value})"
+
+# Subclasses for each filter type follow. Each subclass overrides the extract_attribute method
+# to return the relevant attribute from the CloseApproach object.
+
+class DateFilter(GeneralFilter):
+    @classmethod
+    def extract_attribute(cls, approach):
+        """Extract the date from the CloseApproach object."""
+        return approach.time.date()
+
+class DistanceFilter(GeneralFilter):
+    @classmethod
+    def extract_attribute(cls, approach):
+        """Extract the distance from the CloseApproach object."""
+        return approach.distance
+
+class VelocityFilter(GeneralFilter):
+    @classmethod
+    def extract_attribute(cls, approach):
+        """Extract the velocity from the CloseApproach object."""
+        return approach.velocity
+
+class DiameterFilter(GeneralFilter):
+    @classmethod
+    def extract_attribute(cls, approach):
+        """Extract the diameter from the NEO of the CloseApproach object."""
+        return approach.neo.diameter
+
+class HazardFilter(GeneralFilter):
+    @classmethod
+    def extract_attribute(cls, approach):
+        """Extract the hazardous flag from the NEO of the CloseApproach object."""
+        return approach.neo.hazardous
 
 def create_filters(
         date=None, start_date=None, end_date=None,
@@ -79,47 +112,59 @@ def create_filters(
         diameter_min=None, diameter_max=None,
         hazardous=None
 ):
-    """Create a collection of filters from user-specified criteria.
+    """Create a list of filter objects based on the provided criteria.
 
-    Each of these arguments is provided by the main module with a value from the
-    user's options at the command line. Each one corresponds to a different type
-    of filter. For example, the `--date` option corresponds to the `date`
-    argument, and represents a filter that selects close approaches that occurred
-    on exactly that given date. Similarly, the `--min-distance` option
-    corresponds to the `distance_min` argument, and represents a filter that
-    selects close approaches whose nominal approach distance is at least that
-    far away from Earth. Each option is `None` if not specified at the command
-    line (in particular, this means that the `--not-hazardous` flag results in
-    `hazardous=False`, not to be confused with `hazardous=None`).
+    Args:
+        date: Exact date to match.
+        start_date: Minimum date to match.
+        end_date: Maximum date to match.
+        distance_min: Minimum distance to match.
+        distance_max: Maximum distance to match.
+        velocity_min: Minimum velocity to match.
+        velocity_max: Maximum velocity to match.
+        diameter_min: Minimum diameter to match.
+        diameter_max: Maximum diameter to match.
+        hazardous: Whether to match on the hazardous attribute.
 
-    The return value must be compatible with the `query` method of `NEODatabase`
-    because the main module directly passes this result to that method. For now,
-    this can be thought of as a collection of `AttributeFilter`s.
-
-    :param date: A `date` on which a matching `CloseApproach` occurs.
-    :param start_date: A `date` on or after which a matching `CloseApproach` occurs.
-    :param end_date: A `date` on or before which a matching `CloseApproach` occurs.
-    :param distance_min: A minimum nominal approach distance for a matching `CloseApproach`.
-    :param distance_max: A maximum nominal approach distance for a matching `CloseApproach`.
-    :param velocity_min: A minimum relative approach velocity for a matching `CloseApproach`.
-    :param velocity_max: A maximum relative approach velocity for a matching `CloseApproach`.
-    :param diameter_min: A minimum diameter of the NEO of a matching `CloseApproach`.
-    :param diameter_max: A maximum diameter of the NEO of a matching `CloseApproach`.
-    :param hazardous: Whether the NEO of a matching `CloseApproach` is potentially hazardous.
-    :return: A collection of filters for use with `query`.
+    Returns:
+        A list of initialized filter objects that can be used to filter CloseApproach objects.
     """
-    # TODO: Decide how you will represent your filters.
-    return ()
+    filter_list = []
 
+    # Dictionary mapping the filter names to their respective classes, operators, and values.
+    criteria = {
+        'date': (DateFilter, operator.eq, date),
+        'start_date': (DateFilter, operator.ge, start_date),
+        'end_date': (DateFilter, operator.le, end_date),
+        'distance_min': (DistanceFilter, operator.ge, distance_min),
+        'distance_max': (DistanceFilter, operator.le, distance_max),
+        'velocity_min': (VelocityFilter, operator.ge, velocity_min),
+        'velocity_max': (VelocityFilter, operator.le, velocity_max),
+        'diameter_min': (DiameterFilter, operator.ge, diameter_min),
+        'diameter_max': (DiameterFilter, operator.le, diameter_max),
+        'hazardous': (HazardFilter, operator.eq, hazardous),
+    }
 
-def limit(iterator, n=None):
-    """Produce a limited stream of values from an iterator.
+    # Iterate over the criteria dictionary and create filter objects for each non-None criterion.
+    for key, (FilterClass, op, value) in criteria.items():
+        if value is not None:
+            filter_list.append(FilterClass(op, value))
 
-    If `n` is 0 or None, don't limit the iterator at all.
+    return filter_list
 
-    :param iterator: An iterator of values.
-    :param n: The maximum number of values to produce.
-    :yield: The first (at most) `n` values from the iterator.
+def limit(iterator, max_elements=None):
+    """Limit the number of items produced by an iterator.
+
+    Args:
+        iterator: The iterator to limit.
+        max_elements: The maximum number of elements to produce.
+
+    Returns:
+        An iterator that produces at most `max_elements` items.
     """
-    # TODO: Produce at most `n` values from the given iterator.
-    return iterator
+    if max_elements is None or max_elements == 0:
+        return iterator
+    else:
+        # Otherwise, we return an iterator that stops after max_elements items.
+        return (item for idx, item in enumerate(iterator) if idx < max_elements)
+
